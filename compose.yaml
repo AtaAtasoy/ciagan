@@ -1,0 +1,20 @@
+services:
+  ciagan:
+    image: ciagan/ciagan:latest
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # Input directory
+      - ./input:./input
+      # Output directory
+      - ./output:./output
+      # Model weights
+      - ./weights:/app/weights
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            device_ids: ['0']
+            capabilities: [gpu]
