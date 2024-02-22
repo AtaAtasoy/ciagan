@@ -6,6 +6,7 @@ from os.path import isfile, join, isdir
 import dlib
 from PIL import Image
 import argparse
+import pickle
 
 def get_lndm(path_img, path_out, start_id = 0, dlib_path=""):
     dir_proc = {'msk':'msk', 'org':'orig', 'clr':'clr', 'lnd':'lndm'}
@@ -25,8 +26,9 @@ def get_lndm(path_img, path_out, start_id = 0, dlib_path=""):
     res_h = 218
 
     for fld in folder_list[:]:
-        imglist_all = [f[:-4] for f in listdir(join(path_img, fld)) if isfile(join(path_img, fld, f)) and f[-4:] == ".jpg"]
-        imglist_all.sort(key=int)
+        imglist_all = [f[:-4] for f in listdir(join(path_img, fld)) if isfile(join(path_img, fld, f)) and f[-4:] == ".png"]
+        print(f'Processing folder {fld}, {len(imglist_all)} images found.')
+        #imglist_all.sort(key=int)
         imglist_all = imglist_all[start_id:]
 
         for dir_it in dir_proc:
@@ -35,16 +37,17 @@ def get_lndm(path_img, path_out, start_id = 0, dlib_path=""):
 
         land_mask = True
         crop_coord = []
+        landmarks_list = []
         for it in range(len(imglist_all)):
-            clr = cv2.imread(join(path_img, fld, imglist_all[it]+".jpg"), cv2.IMREAD_ANYCOLOR)
+            clr = cv2.imread(join(path_img, fld, imglist_all[it]+".png"), cv2.IMREAD_ANYCOLOR)
             img = clr.copy()
             img_dlib = np.array(clr[:, :, :], dtype=np.uint8)
-            dets = detector(img_dlib, 1)
-
+            dets = detector(img_dlib, 2)
+           
             for k_it, d in enumerate(dets):
-                if k_it != 0:
-                    continue
                 landmarks = predictor(img_dlib, d)
+                
+                landmarks_list.append(landmarks)    
 
                 # centering
                 c_x = int((landmarks.part(42).x + landmarks.part(39).x) / 2)
@@ -63,14 +66,19 @@ def get_lndm(path_img, path_out, start_id = 0, dlib_path=""):
                 
                 visual = img_p[c_y - h_r+pd:c_y + h_r+pd, c_x - w_r+pd:c_x + w_r+pd]
 
-                crop_coord.append([c_y - h_r, c_y + h_r, c_x - w_r, c_x + w_r, pd, imglist_all[it]+".jpg"])
+                crop_coord.append([c_y - h_r, c_y + h_r, c_x - w_r, c_x + w_r, pd, imglist_all[it]+ "__" + str(k_it + 1) + "__" + ".jpg"])
                 t_x, t_y = int(c_x - w_r), int(c_y - h_r)
 
                 ratio_w, ratio_h = res_w/w, res_h/h
 
                 visual = cv2.resize(visual, dsize=(res_w, res_h), interpolation=cv2.INTER_CUBIC)
-                cv2.imwrite(join(path_out, dir_proc['clr'], fld, imglist_all[it]+".jpg"), visual) #saving crop
-                cv2.imwrite(join(path_out, dir_proc['org'], fld, imglist_all[it]+".jpg"), clr) # saving original
+                cv2.imwrite(join(path_out, dir_proc['clr'], fld, imglist_all[it]+ "__" + str(k_it + 1) + "__" + ".jpg"), visual) #saving crop
+                cv2.imwrite(join(path_out, dir_proc['org'], fld, imglist_all[it]+ ".jpg"), clr) # saving original
+                
+                # Save landmarks
+                pickle_path = join(path_out, dir_proc['lnd'], fld, imglist_all[it]+ "__" + str(k_it + 1) + "__" + "landmarks.pkl")
+                pickle.dump(landmarks, open(pickle_path, 'wb', pickle.HIGHEST_PROTOCOL))
+                
 
                 if land_mask:
                     img_lndm = np.ones((res_h, res_w, 3), np.uint8) * 255
@@ -93,7 +101,7 @@ def get_lndm(path_img, path_out, start_id = 0, dlib_path=""):
                     draw_line(0, 67, 60)
 
                     result = Image.fromarray((img_lndm).astype(np.uint8))
-                    result.save(join(path_out, dir_proc['lnd'], fld, imglist_all[it]+".jpg"))
+                    result.save(join(path_out, dir_proc['lnd'], fld, imglist_all[it]+"__" + str(k_it + 1) + "__" + ".jpg"))
 
                     img_msk = np.ones((res_h, res_w, 3), np.uint8) * 255
 
@@ -105,9 +113,10 @@ def get_lndm(path_img, path_out, start_id = 0, dlib_path=""):
                     contours = contours.astype(int)
                     cv2.fillPoly(img_msk, pts=[contours], color=(0, 0, 0))
                     result = Image.fromarray((img_msk).astype(np.uint8))
-                    result.save(join(path_out, dir_proc['msk'], fld, imglist_all[it]+".jpg"))
+                    result.save(join(path_out, dir_proc['msk'], fld, imglist_all[it]+"__" + str(k_it + 1) + "__" + ".jpg"))
+                    
 
-        #np.save(join(path_out, dir_proc['org'], fld, 'crop_coord.npy'), crop_coord) #crop coordinates
+        np.save(join(path_out, dir_proc['org'], fld, 'crop_coord.npy'), crop_coord) #crop coordinates
         print("folder done",fld)
 
 

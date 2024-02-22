@@ -10,16 +10,21 @@ import util_func
 import util_data
 from torchvision import transforms, utils
 from os.path import join
-from os import listdir
+from os import listdir, makedirs, path
 import arch.arch_unet_flex as arch_gen
 import argparse
+import cv2
 
 def inference(generator, out_dir, data_loader, device_comp, num_classes = 1200):
     total_imgs = 0
     for batch in data_loader:
         # prepare data
-        im_faces, im_lndm, im_msk, im_ind = [item[0].float().to(device_comp) for item in batch]
-
+        im_faces, im_lndm, im_msk, im_ind = [item[0].float().to(device_comp) for item in batch[:4]]
+        
+        im_category = batch[4][0][0]
+        im_label = batch[5][0][0]
+        print("Processing image", im_label, "from category", im_category)
+        
         output_id = (int(im_ind[0].cpu())+1)%num_classes #chose next id
 
         labels_one_hot = np.zeros((1, num_classes))
@@ -34,7 +39,9 @@ def inference(generator, out_dir, data_loader, device_comp, num_classes = 1200):
 
         # output image
         img_out = transforms.ToPILImage()(im_gen[0].cpu()).convert("RGB")
-        img_out.save(join(out_dir, str(total_imgs).zfill(6) + '.jpg'))
+        if not path.exists(join(out_dir, str(im_category))):
+            makedirs(join(out_dir, str(im_category)))
+        img_out.save(join(out_dir, str(im_category), im_label))
         total_imgs+=1
     
     print("Done.")

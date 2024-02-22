@@ -40,24 +40,28 @@ class ImageDataset(torch.utils.data.Dataset):
         self.root_img = 'clr/'
         self.root_lndm = 'lndm/'
         self.root_msk = 'msk/'
-        self.im_label, self.im_paths, self.im_index = [], [], []
-
+        self.im_label, self.im_paths, self.im_index, self.im_names  = [], [], [], []
+        
         self.flag_augment = flag_augment
-
+        temp = []
         if flag_init:
             it_j=0
             for it_i in range(label_num):
-                imglist_all = [f for f in listdir(root_dir+self.root_lndm + str(it_i)) if isfile(join(root_dir, self.root_lndm + str(it_i), f)) and f[-4:] == ".jpg"]
-                imglist_all_int = [int(x[:-4]) for x in imglist_all]
-                imglist_all_int.sort()
-                imglist_all = [(str(x).zfill(6) + ".jpg") for x in imglist_all_int]
+                folder_list = [f for f in listdir(root_dir+self.root_lndm) if isdir(join(root_dir, self.root_lndm))]
+                folder_list.sort()
+                                
+                imglist_all = [f for f in listdir(join(root_dir, self.root_lndm, folder_list[it_i])) if isfile(join(root_dir, self.root_lndm, folder_list[it_i], f)) and f[-4:] == ".jpg"]
+                temp += len(imglist_all) * [folder_list[it_i]]
+                imglist_all.sort()
 
                 self.im_label += [it_i] * len(imglist_all)
-                self.im_paths += imglist_all
                 self.im_index += [it_j] * len(imglist_all)
+                self.im_names += imglist_all
+                
                 it_j+=1
-            print("Dataset initialized")
-
+            temp.sort()
+            
+            self.im_paths += temp
     def __len__(self):
         return len(self.im_label)
 
@@ -91,28 +95,32 @@ class ImageDataset(torch.utils.data.Dataset):
         img_res = img_res.resize(self.img_shape, resample=Image.LANCZOS)
         return self.transform_fnc(img_res)
 
-    def __getitem__(self, idx):
-        im_clr, im_lndm, im_msk, im_ind = [], [], [], []
+    def __getitem__(self, idx): 
+        im_clr, im_lndm, im_msk, im_ind, im_lbl, im_category = [], [], [], [], [], []
         if self.flag_sample==1:
             idx = [idx]
+        
 
+        self.im_paths.sort()
         for k_iter in range(self.flag_sample):
             self.crop_rnd = [random.random(), random.random(), random.random(), random.random()]
-            im_clr_path = os.path.join(self.root_dir, self.root_img, str(self.im_label[idx[k_iter]]), self.im_paths[idx[k_iter]])
+            im_clr_path = os.path.join(self.root_dir, self.root_img, str(self.im_paths[idx[k_iter]]), self.im_names[idx[k_iter]])
             clr_img = self.load_img(im_clr_path)
             im_clr.append(clr_img)
 
-            im_lndm_path = os.path.join(self.root_dir, self.root_lndm, str(self.im_label[idx[k_iter]]), self.im_paths[idx[k_iter]])
+            im_lndm_path = os.path.join(self.root_dir, self.root_lndm, str(self.im_paths[idx[k_iter]]), self.im_names[idx[k_iter]])
             lndm_img = self.load_img(im_lndm_path)
             im_lndm.append(lndm_img)
 
-            im_msk_path = os.path.join(self.root_dir, self.root_msk, str(self.im_label[idx[k_iter]]), self.im_paths[idx[k_iter]])
+            im_msk_path = os.path.join(self.root_dir, self.root_msk, str(self.im_paths[idx[k_iter]]), self.im_names[idx[k_iter]])
             msk = ((1 - self.load_img(im_msk_path)) > 0.2)
             im_msk.append(msk)
 
             im_ind.append(self.im_index[idx[k_iter]])
-
-        return im_clr, im_lndm, im_msk, im_ind
+            im_lbl.append(self.im_paths[idx[k_iter]])
+            im_category.append(self.im_names[idx[k_iter]])
+            
+        return im_clr, im_lndm, im_msk, im_ind, im_lbl, im_category
 
 
 def load_data(DATA_PATH, DATA_SET, WORKERS_NUM, BATCH_SIZE, IMG_SIZE, FLAG_DATA_AUGM, LABEL_NUM, mode_train=True):
@@ -136,7 +144,14 @@ def load_data(DATA_PATH, DATA_SET, WORKERS_NUM, BATCH_SIZE, IMG_SIZE, FLAG_DATA_
         print("Total number of training samples:", len(dataset_train))
         return loader_train, total_steps, LABEL_NUM
     else:
-        label_num = 363
+        folder_list = [f for f in listdir(data_dir + 'lndm') if isdir(join(data_dir, 'lndm'))]
+        labels = 0
+        # Iterate ove each folder and get the number of images
+        for folder in folder_list:
+            labels += len([f for f in listdir(join(data_dir, 'lndm', folder)) if isfile(join(data_dir, 'lndm', folder, f)) and f[-4:] == ".jpg"])
+        print("Total number of labels:", labels)
+        
+        label_num = labels
         dataset_test = ImageDataset(root_dir=data_dir, label_num=label_num,transform_fnc=transforms.Compose([transforms.ToTensor()]), img_size = IMG_SIZE)
         loader_test = torch.utils.data.DataLoader(dataset=dataset_test, num_workers=1, batch_size=1, shuffle=False)
         print("Total number of test samples:", len(dataset_test))
